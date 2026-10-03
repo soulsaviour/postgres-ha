@@ -1,0 +1,6 @@
+---
+- name: Run etcd for Patroni's leader election
+  hosts: etcd
+  become: true
+  roles:
+    - etcd

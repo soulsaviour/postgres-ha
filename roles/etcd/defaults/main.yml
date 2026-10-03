@@ -1,0 +1,4 @@
+---
+etcd_version: "3.7.3"
+etcd_cluster_token: pg-etcd
+etcd_data_dir: /var/lib/etcd

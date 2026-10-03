@@ -1,0 +1,11 @@
+# Managed by Ansible.
+name: {{ inventory_hostname }}
+data-dir: {{ etcd_data_dir }}
+listen-peer-urls: http://{{ node_ip }}:2380
+listen-client-urls: http://{{ node_ip }}:2379,http://127.0.0.1:2379
+initial-advertise-peer-urls: http://{{ node_ip }}:2380
+advertise-client-urls: http://{{ node_ip }}:2379
+initial-cluster: {% for host in groups['etcd'] %}{{ host }}=http://{{ hostvars[host]['node_ip'] }}:2380{{ ',' if not loop.last else '' }}{% endfor %}
+
+initial-cluster-token: {{ etcd_cluster_token }}
+initial-cluster-state: new

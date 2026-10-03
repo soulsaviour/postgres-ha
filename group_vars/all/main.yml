@@ -1,0 +1,3 @@
+---
+# Address the cluster members use to reach each other.
+node_ip: "{{ ansible_host }}"

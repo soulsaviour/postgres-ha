@@ -1,0 +1,23 @@
+---
+# Three database nodes that also run etcd, and one HAProxy node.
+all:
+  children:
+    etcd:
+      hosts:
+        pg1:
+        pg2:
+        pg3:
+    postgres:
+      hosts:
+        pg1:
+          ansible_host: 10.0.1.11
+        pg2:
+          ansible_host: 10.0.1.12
+        pg3:
+          ansible_host: 10.0.1.13
+    haproxy:
+      hosts:
+        lb1:
+          ansible_host: 10.0.1.10
+  vars:
+    ansible_user: ubuntu
