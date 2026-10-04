@@ -1,3 +1,6 @@
 ---
 # Address the cluster members use to reach each other.
 node_ip: "{{ ansible_host }}"
+
+# PostgreSQL major version, from the PGDG repository.
+postgresql_version: 17

@@ -4,3 +4,9 @@
   become: true
   roles:
     - etcd
+
+- name: Install PostgreSQL and Patroni
+  hosts: postgres
+  become: true
+  roles:
+    - postgresql
