@@ -1,0 +1,48 @@
+---
+- name: Install Patroni
+  ansible.builtin.apt:
+    name: patroni
+
+- name: Create the config directory
+  ansible.builtin.file:
+    path: /etc/patroni
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "0750"
+
+- name: Write the Patroni config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/patroni/config.yml
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: Reload Patroni
+
+# Started on every node at once: the first to take the leader key in etcd
+# runs initdb, the others clone from it with pg_basebackup.
+- name: Start Patroni
+  ansible.builtin.systemd_service:
+    name: patroni
+    state: started
+    enabled: true
+
+- name: Wait for PostgreSQL to be running under Patroni
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}:8008/health"
+  register: patroni_health
+  until: patroni_health.status == 200
+  retries: 30
+  delay: 5
+
+- name: Show the cluster
+  ansible.builtin.command: patronictl -c /etc/patroni/config.yml list
+  register: patroni_list
+  changed_when: false
+  run_once: true
+
+- name: Print the cluster
+  ansible.builtin.debug:
+    var: patroni_list.stdout_lines
+  run_once: true

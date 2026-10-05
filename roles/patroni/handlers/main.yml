@@ -1,0 +1,7 @@
+---
+# Patroni re-reads its config on reload; parameters that need a PostgreSQL
+# restart are flagged in `patronictl list` rather than applied blindly.
+- name: Reload Patroni
+  ansible.builtin.systemd_service:
+    name: patroni
+    state: reloaded

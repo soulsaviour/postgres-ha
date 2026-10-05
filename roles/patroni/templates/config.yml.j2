@@ -1,0 +1,65 @@
+# Managed by Ansible.
+scope: {{ patroni_cluster_name }}
+name: {{ inventory_hostname }}
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: {{ node_ip }}:8008
+
+etcd3:
+  hosts:
+{% for host in groups['etcd'] %}
+    - {{ hostvars[host]['node_ip'] }}:2379
+{% endfor %}
+
+bootstrap:
+  # Cluster-wide settings, stored in etcd on first start. Later changes go
+  # through `patronictl edit-config`, not this file.
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    # Never promote a replica more than 1 MB behind the old primary.
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      use_slots: true
+      parameters:
+        wal_level: replica
+        hot_standby: "on"
+        wal_log_hints: "on"
+        max_wal_senders: 10
+        max_replication_slots: 10
+        password_encryption: scram-sha-256
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: {{ node_ip }}:5432
+  data_dir: /var/lib/postgresql/{{ postgresql_version }}/main
+  bin_dir: /usr/lib/postgresql/{{ postgresql_version }}/bin
+  authentication:
+    superuser:
+      username: postgres
+      password: "{{ vault_postgres_password }}"
+    replication:
+      username: replicator
+      password: "{{ vault_replication_password }}"
+    rewind:
+      username: rewind_user
+      password: "{{ vault_rewind_password }}"
+  pg_hba:
+    - local all all peer
+    - host replication replicator {{ cluster_cidr }} scram-sha-256
+    - host all all 127.0.0.1/32 scram-sha-256
+    - host all all {{ cluster_cidr }} scram-sha-256
+  parameters:
+    unix_socket_directories: /var/run/postgresql
+
+tags:
+  nofailover: false
+  noloadbalance: false
+  clonefrom: false
+  nosync: false
