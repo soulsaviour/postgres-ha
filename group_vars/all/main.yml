@@ -9,3 +9,6 @@ patroni_cluster_name: pg-main
 
 # Network that may connect to PostgreSQL and PgBouncer.
 cluster_cidr: 10.0.1.0/24
+
+# PgBouncer listens here on every database node; HAProxy forwards to it.
+pgbouncer_port: 6432

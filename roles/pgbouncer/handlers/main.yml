@@ -1,0 +1,5 @@
+---
+- name: Reload PgBouncer
+  ansible.builtin.systemd_service:
+    name: pgbouncer
+    state: reloaded

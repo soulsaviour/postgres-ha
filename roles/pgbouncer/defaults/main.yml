@@ -1,0 +1,7 @@
+---
+# Transaction pooling lets a few server connections serve many clients. Apps
+# that rely on session state (SET, advisory locks, prepared statements across
+# transactions) need "session" instead.
+pgbouncer_pool_mode: transaction
+pgbouncer_max_client_conn: 1000
+pgbouncer_default_pool_size: 20

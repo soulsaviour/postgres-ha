@@ -1,0 +1,59 @@
+---
+- name: Install PgBouncer
+  ansible.builtin.apt:
+    name: pgbouncer
+
+- name: Write the PgBouncer config
+  ansible.builtin.template:
+    src: pgbouncer.ini.j2
+    dest: /etc/pgbouncer/pgbouncer.ini
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Reload PgBouncer
+
+- name: Write the auth user's credentials
+  ansible.builtin.template:
+    src: userlist.txt.j2
+    dest: /etc/pgbouncer/userlist.txt
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  no_log: true
+  notify: Reload PgBouncer
+
+- name: Copy the auth setup SQL
+  ansible.builtin.copy:
+    src: auth_setup.sql
+    dest: /etc/pgbouncer/auth_setup.sql
+    owner: postgres
+    group: postgres
+    mode: "0640"
+
+- name: Find out whether this node is the primary
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}:8008/primary"
+    status_code: [200, 503]
+  register: pgbouncer_primary_check
+
+- name: Create the auth role and lookup function on the primary
+  ansible.builtin.command:
+    argv:
+      - psql
+      - --no-psqlrc
+      - --quiet
+      - --set=ON_ERROR_STOP=1
+      - --dbname=postgres
+      - "--set=auth_password={{ vault_pgbouncer_auth_password }}"
+      - --file=/etc/pgbouncer/auth_setup.sql
+  become: true
+  become_user: postgres
+  when: pgbouncer_primary_check.status == 200
+  changed_when: false
+  no_log: true
+
+- name: Enable and start PgBouncer
+  ansible.builtin.systemd_service:
+    name: pgbouncer
+    enabled: true
+    state: started

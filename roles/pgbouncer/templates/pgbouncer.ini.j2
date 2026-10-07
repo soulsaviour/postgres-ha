@@ -1,0 +1,29 @@
+;; Managed by Ansible.
+[databases]
+; Any database name is forwarded to PostgreSQL on this node.
+* = host=127.0.0.1 port=5432
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = {{ pgbouncer_port }}
+unix_socket_dir = /var/run/postgresql
+
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+; Other users' password hashes are looked up through a SECURITY DEFINER
+; function, so application users never need to be listed here.
+auth_user = pgbouncer_auth
+auth_dbname = postgres
+auth_query = SELECT usename, passwd FROM pgbouncer.get_auth($1)
+
+pool_mode = {{ pgbouncer_pool_mode }}
+max_client_conn = {{ pgbouncer_max_client_conn }}
+default_pool_size = {{ pgbouncer_default_pool_size }}
+reserve_pool_size = 5
+ignore_startup_parameters = extra_float_digits
+
+admin_users = postgres
+stats_users = pgbouncer_auth
+
+logfile = /var/log/postgresql/pgbouncer.log
+pidfile = /var/run/postgresql/pgbouncer.pid
