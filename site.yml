@@ -12,3 +12,9 @@
     - postgresql
     - patroni
     - pgbouncer
+
+- name: Route clients to the right node
+  hosts: haproxy
+  become: true
+  roles:
+    - haproxy

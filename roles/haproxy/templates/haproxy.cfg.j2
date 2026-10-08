@@ -1,0 +1,49 @@
+# Managed by Ansible.
+global
+    log /dev/log local0
+    maxconn 4000
+    user haproxy
+    group haproxy
+    daemon
+
+defaults
+    mode tcp
+    log global
+    option tcplog
+    retries 2
+    timeout connect 4s
+    timeout client 30m
+    timeout server 30m
+    timeout check 5s
+
+listen stats
+    mode http
+    bind *:{{ haproxy_stats_port }}
+    stats enable
+    stats uri /
+    stats refresh 10s
+
+# Writes. Only the current leader answers 200 on Patroni's /primary, so after
+# a failover traffic follows the new leader within a few seconds, and
+# sessions on the old one are cut rather than left writing to a replica.
+listen primary
+    bind *:{{ haproxy_primary_port }}
+    option httpchk
+    http-check send meth OPTIONS uri /primary
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+{% for host in groups['postgres'] %}
+    server {{ host }} {{ hostvars[host]['node_ip'] }}:{{ pgbouncer_port }} check port 8008
+{% endfor %}
+
+# Reads, spread over replicas that are running and not lagging.
+listen replicas
+    bind *:{{ haproxy_replicas_port }}
+    balance roundrobin
+    option httpchk
+    http-check send meth OPTIONS uri /replica?lag={{ haproxy_max_replica_lag }}
+    http-check expect status 200
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+{% for host in groups['postgres'] %}
+    server {{ host }} {{ hostvars[host]['node_ip'] }}:{{ pgbouncer_port }} check port 8008
+{% endfor %}

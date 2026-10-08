@@ -1,0 +1,6 @@
+---
+haproxy_primary_port: 5000
+haproxy_replicas_port: 5001
+haproxy_stats_port: 7000
+# Replicas further behind than this are taken out of the read pool.
+haproxy_max_replica_lag: 16MB
