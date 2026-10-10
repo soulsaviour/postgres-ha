@@ -1,0 +1,14 @@
+---
+# ansible-playbook status.yml
+- name: Show the cluster
+  hosts: postgres[0]
+  become: true
+  tasks:
+    - name: List members, roles and replication lag
+      ansible.builtin.command: patronictl -c /etc/patroni/config.yml list
+      register: status_list
+      changed_when: false
+
+    - name: Show them
+      ansible.builtin.debug:
+        var: status_list.stdout_lines

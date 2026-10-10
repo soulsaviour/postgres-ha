@@ -1,0 +1,85 @@
+---
+# Failover drill for a test cluster. Stops Patroni on the leader, as if the
+# node had died, then checks that:
+#   1. a replica is promoted
+#   2. writes through HAProxy reach the new leader
+#   3. the old leader comes back as a replica once Patroni starts again
+# Run against a test cluster, not production.
+- name: Failover drill
+  hosts: postgres[0]
+  become: true
+  vars:
+    drill_list: patronictl -c /etc/patroni/config.yml list --format json
+    drill_haproxy: "{{ hostvars[groups['haproxy'][0]]['node_ip'] }}"
+  tasks:
+    - name: Find the current leader
+      ansible.builtin.command: "{{ drill_list }}"
+      register: drill_before
+      changed_when: false
+
+    - name: Pick the leader and a node to watch from
+      ansible.builtin.set_fact:
+        drill_old_leader: >-
+          {{ (drill_before.stdout | from_json | selectattr('Role', 'equalto', 'Leader') | first).Member }}
+        drill_observer: >-
+          {{ (drill_before.stdout | from_json | rejectattr('Role', 'equalto', 'Leader') | first).Member }}
+        drill_started: "{{ lookup('pipe', 'date +%s') }}"
+
+    - name: Stop Patroni on the leader
+      ansible.builtin.systemd_service:
+        name: patroni
+        state: stopped
+      delegate_to: "{{ drill_old_leader }}"
+
+    - name: Wait for a replica to be promoted
+      ansible.builtin.command: "{{ drill_list }}"
+      delegate_to: "{{ drill_observer }}"
+      register: drill_during
+      until: >-
+        (drill_during.stdout | from_json | selectattr('Role', 'equalto', 'Leader')
+         | rejectattr('Member', 'equalto', drill_old_leader) | list | length) == 1
+      retries: 30
+      delay: 2
+      changed_when: false
+
+    - name: Record the failover time
+      ansible.builtin.set_fact:
+        drill_failover_seconds: "{{ lookup('pipe', 'date +%s') | int - drill_started | int }}"
+
+    - name: Check writes through HAProxy reach a primary
+      ansible.builtin.command: >-
+        psql -X -At -h {{ drill_haproxy }} -p 5000 -U postgres -d postgres
+        -c "select pg_is_in_recovery()"
+      environment:
+        PGPASSWORD: "{{ vault_postgres_password }}"
+      delegate_to: "{{ drill_observer }}"
+      register: drill_write_check
+      until: drill_write_check.stdout == "f"
+      retries: 10
+      delay: 2
+      changed_when: false
+      no_log: true
+
+    - name: Start Patroni on the old leader again
+      ansible.builtin.systemd_service:
+        name: patroni
+        state: started
+      delegate_to: "{{ drill_old_leader }}"
+
+    - name: Wait for it to rejoin as a streaming replica
+      ansible.builtin.command: "{{ drill_list }}"
+      delegate_to: "{{ drill_observer }}"
+      register: drill_after
+      until: >-
+        (drill_after.stdout | from_json | selectattr('Member', 'equalto', drill_old_leader)
+         | selectattr('State', 'equalto', 'streaming') | list | length) == 1
+      retries: 30
+      delay: 5
+      changed_when: false
+
+    - name: Report
+      ansible.builtin.debug:
+        msg: >-
+          {{ drill_old_leader }} stopped; new leader elected in about
+          {{ drill_failover_seconds }} s; writes through HAProxy reach the new
+          primary; {{ drill_old_leader }} rejoined as a streaming replica.

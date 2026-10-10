@@ -1,0 +1,46 @@
+---
+# Planned switchover, e.g. before patching the primary's host. Patroni waits
+# for the candidate to catch up, so no committed data is lost.
+#
+#   ansible-playbook switchover.yml                 # Patroni picks a replica
+#   ansible-playbook switchover.yml -e candidate=pg2
+- name: Move the primary to another node
+  hosts: postgres[0]
+  become: true
+  vars:
+    switchover_candidate: "{{ candidate | default('') }}"
+    switchover_list: patronictl -c /etc/patroni/config.yml list --format json
+  tasks:
+    - name: Find the current leader
+      ansible.builtin.command: "{{ switchover_list }}"
+      register: switchover_before
+      changed_when: false
+
+    - name: Remember it
+      ansible.builtin.set_fact:
+        switchover_old_leader: >-
+          {{ (switchover_before.stdout | from_json | selectattr('Role', 'equalto', 'Leader') | first).Member }}
+
+    - name: Switch over
+      ansible.builtin.command: >-
+        patronictl -c /etc/patroni/config.yml switchover {{ patroni_cluster_name }}
+        --leader {{ switchover_old_leader }}
+        {{ ('--candidate ' ~ switchover_candidate) if switchover_candidate else '' }}
+        --force
+      changed_when: true
+
+    - name: Wait for the new leader
+      ansible.builtin.command: "{{ switchover_list }}"
+      register: switchover_after
+      until: >-
+        (switchover_after.stdout | from_json | selectattr('Role', 'equalto', 'Leader')
+         | map(attribute='Member') | reject('equalto', switchover_old_leader) | list | length) == 1
+      retries: 20
+      delay: 3
+      changed_when: false
+
+    - name: Show the result
+      ansible.builtin.debug:
+        msg: >-
+          Leader moved from {{ switchover_old_leader }} to
+          {{ (switchover_after.stdout | from_json | selectattr('Role', 'equalto', 'Leader') | first).Member }}
