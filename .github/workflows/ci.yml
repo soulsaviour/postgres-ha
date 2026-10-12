@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install ansible-core ansible-lint
+      - name: Syntax check
+        run: |
+          for playbook in site.yml status.yml switchover.yml failover-test.yml; do
+            ansible-playbook -i inventory/hosts.example.yml "$playbook" --syntax-check
+          done
+      - run: ansible-lint
+      - run: shellcheck tests/*.sh
+
+  rendered-configs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Ansible and HAProxy
+        run: |
+          pip install ansible-core
+          sudo apt-get update -qq && sudo apt-get install -y -qq haproxy
+      - name: HAProxy config passes haproxy -c
+        run: |
+          ansible-playbook -i inventory/hosts.example.yml tests/render.yml \
+            -e target=lb1 -e template=roles/haproxy/templates/haproxy.cfg.j2 \
+            -e dest=/tmp/haproxy.cfg -e @roles/haproxy/defaults/main.yml
+          haproxy -c -f /tmp/haproxy.cfg
+      - name: etcd and Patroni configs are valid YAML for each node
+        run: |
+          for host in pg1 pg2 pg3; do
+            ansible-playbook -i inventory/hosts.example.yml tests/render.yml \
+              -e target=$host -e template=roles/patroni/templates/config.yml.j2 \
+              -e dest=/tmp/patroni-$host.yml -e @inventory/group_vars/all/vault.yml.example
+            ansible-playbook -i inventory/hosts.example.yml tests/render.yml \
+              -e target=$host -e template=roles/etcd/templates/etcd.conf.yml.j2 \
+              -e dest=/tmp/etcd-$host.yml -e @roles/etcd/defaults/main.yml
+            python3 -c "import sys, yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" \
+              /tmp/patroni-$host.yml /tmp/etcd-$host.yml
+          done
+
+  pgbouncer-auth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install PostgreSQL and PgBouncer
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql pgbouncer python3-jinja2
+      - name: Log in through PgBouncer with auth_query
+        run: tests/pgbouncer_auth.sh

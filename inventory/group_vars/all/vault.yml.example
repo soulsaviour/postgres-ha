@@ -1,5 +1,5 @@
 ---
-# Copy to vault.yml, set real passwords, then: ansible-vault encrypt group_vars/all/vault.yml
+# Copy to vault.yml, set real passwords, then: ansible-vault encrypt inventory/group_vars/all/vault.yml
 vault_postgres_password: change-me
 vault_replication_password: change-me
 vault_rewind_password: change-me

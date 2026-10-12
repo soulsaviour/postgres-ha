@@ -1,0 +1,17 @@
+---
+# Renders a role template for one inventory host on this machine, so CI can
+# check the result with the real tool (haproxy -c, YAML parsers):
+#
+#   ansible-playbook -i inventory/hosts.example.yml tests/render.yml \
+#     -e target=lb1 -e template=roles/haproxy/templates/haproxy.cfg.j2 \
+#     -e dest=/tmp/haproxy.cfg -e @roles/haproxy/defaults/main.yml
+- name: Render a template locally
+  hosts: "{{ target | default('none') }}"
+  gather_facts: false
+  tasks:
+    - name: Render
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../{{ template }}"
+        dest: "{{ dest }}"
+        mode: "0644"
+      delegate_to: localhost
